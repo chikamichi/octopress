@@ -51,6 +51,57 @@ module Octopress
       color ||= :green
       super
     end
+
+    # Tail call optimized recursive configuration edition helper (whoa).
+    #
+    # @overload edit_config(config, key, new_value)
+    #   @param [String] config configuration filename (relative to current directory)
+    #   @param [#to_s, true, false] key config key to edit
+    #   @param [#to_s, true, false] new_value
+    # @overload edit_config(config, hash)
+    #   @param [String] config configuration filename (relative to current directory)
+    #   @param [Hash] hash like {'foo' => 'bar', :true => false}
+    #
+    def edit_config(config, *args)
+      edit_config!(config, '', *args)
+    end
+
+    private
+
+    def edit_config!(config, filecontent, *args)
+      # TCO is a bit messy for Ruby won't do pattern matching. Here I rely on
+      # the presence of the 'false' boolean in last position to discard between first
+      # call and subsequent ones, and I also need to discard between Array and Hash
+      # support, all of that to init the 'filecontent' accumulator. It's fairly easy though!
+      if args.length == 1 || !args.first.is_a?(Hash)
+        # first time here, read the conf
+        filecontent = IO.read(config)
+      else
+        # within recursion, remove the 'false' boolean and proceed
+        args.pop
+      end
+
+      args = args[0].is_a?(Hash) ? args.pop : args = {args[0] => args[1]}
+
+      if args.empty?
+        File.open(config, 'w') do |f|
+          f.write filecontent
+        end and return
+      end
+
+      key, new_value = args.shift
+
+      if config.end_with?('.rb')
+        filecontent.sub!(/#{key.to_s}(\s*)=(\s*)(["'])[\w\-\/]*["']/, "#{key.to_s}\\1=\\2\\3#{new_value}/\\3")
+      elsif config.end_with?('.yml')
+        filecontent.sub!(/^(\s*)#{key}:(\s+)([^(\s*#)]+)(.*)/, "\\1#{key}:\\2#{new_value}\\4")
+      else
+        say "edit_config(#{config}, #{args} unable to process the specified conf file (.rb or .yml?)", :red
+        return
+      end
+
+      edit_config!(config, filecontent, args, false)
+    end
   end
 
   # "Singleton" task to setup a brand new Octopress in one step.
@@ -303,34 +354,26 @@ module Octopress
     def set_root(dir)
       dir = dir.match(/\//) ? '' : "/" + dir.sub(/(\/*)(.+)/, "\\2").sub(/\/$/, '')
 
-      thorfile = IO.read(__FILE__)
-      thorfile.sub!(/^(\s*):public_dir(\s*)=>(\s*)(["'])?([^\s"']*)(["'])?/, "\\1:public_dir\\2=>\\3\\4public#{dir}\\6")
-      File.open(__FILE__, 'w') do |f|
-        f.write thorfile
-      end
+      edit_config('config.rb', {
+        :http_path        => "#{dir}",
+        :http_images_path => "#{dir}/images",
+        :http_fonts_path  => "#{dir}/fonts",
+        :css_dir          => "public#{dir}/stylesheets"
+      })
 
-      compass_config = IO.read('config.rb')
-      compass_config.sub!(/http_path(\s*)=(\s*)(["'])[\w\-\/]*["']/, "http_path\\1=\\2\\3#{dir}/\\3")
-      compass_config.sub!(/http_images_path(\s*)=(\s*)(["'])[\w\-\/]*["']/, "http_images_path\\1=\\2\\3#{dir}/images\\3")
-      compass_config.sub!(/http_fonts_path(\s*)=(\s*)(["'])[\w\-\/]*["']/, "http_fonts_path\\1=\\2\\3#{dir}/fonts\\3")
-      compass_config.sub!(/css_dir(\s*)=(\s*)(["'])[\w\-\/]*["']/, "css_dir\\1=\\2\\3public#{dir}/stylesheets\\3")
-      File.open('config.rb', 'w') do |f|
-        f.write compass_config
-      end
+      edit_config('_config.yml', {
+        'public_dir'    => "public#{dir}",
+        'destination'   => "public#{dir}",
+        'subscribe_rss' => "#{dir}/atom.xml",
+        'root'          => "/#{dir.sub(/^\//, '')}"
+      })
 
-      jekyll_config = IO.read('_config.yml')
-      jekyll_config.sub!(/^destination:.+$/, "destination: public#{dir}")
-      jekyll_config.sub!(/^subscribe_rss:\s*\/.+$/, "subscribe_rss: #{dir}/atom.xml")
-      jekyll_config.sub!(/^root:.*$/, "root: /#{dir.sub(/^\//, '')}")
-      File.open('_config.yml', 'w') do |f|
-        f.write jekyll_config
+      in_root do
+        remove_dir public_dir
+        mkdir_p "#{public_dir}#{dir}"
       end
-
-      remove_dir public_dir
-      mkdir_p "#{public_dir}#{dir}"
       say "## Site's root directory is now '/#{dir.sub(/^\//, '')}'"
     end
-
 
     desc 'config BRANCH_NAME', "Setup both the _deploy folder and the deploy branch"
     def config(branch)
@@ -343,14 +386,12 @@ module Octopress
         run "echo 'My Octopress Page is coming soon &hellip;' > index.html"
         run "git add ."
         run "git commit -m 'Octopress init'"
-
-        thorfile = IO.read(__FILE__)
-        thorfile.sub!(/^(\s*):deploy_branch(\s*)=>(\s*)(["'])?([^\s"']*)(["'])?/, "\\1:deploy_branch\\2=>\\3\\4#{branch}\\6")
-        thorfile.sub!(/^(\s*):deploy_default(\s*)=>(\s*)(["'])?([^\s"']*)(["'])?/, "\\1:deploy_default\\2=>\\3\\4push\\6")
-        File.open(__FILE__, 'w') do |f|
-          f.write thorfile
-        end
       end
+
+      edit_config('_config.yml', {
+        'deploy_branch'  => branch,
+        'deploy_default' => 'pussh'
+      })
 
       say "## Deployment configured. You can now deploy to the #{branch} branch by running thor deploy"
     end
