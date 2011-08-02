@@ -63,24 +63,13 @@ module Octopress
     #   @param [Hash] hash like {'foo' => 'bar', :true => false}
     #
     def edit_config(config, *args)
-      edit_config!(config, '', *args)
+      edit_config!(config, nil, *args)
     end
 
     private
 
     def edit_config!(config, filecontent, *args)
-      # TCO is a bit messy for Ruby won't do pattern matching. Here I rely on
-      # the presence of the 'false' boolean in last position to discard between first
-      # call and subsequent ones, and I also need to discard between Array and Hash
-      # support, all of that to init the 'filecontent' accumulator. It's fairly easy though!
-      if args.length == 1 || !args.first.is_a?(Hash)
-        # first time here, read the conf
-        filecontent = IO.read(config)
-      else
-        # within recursion, remove the 'false' boolean and proceed
-        args.pop
-      end
-
+      filecontent = IO.read(config) if filecontent.nil?
       args = args[0].is_a?(Hash) ? args.pop : args = {args[0] => args[1]}
 
       if args.empty?
@@ -100,7 +89,7 @@ module Octopress
         return
       end
 
-      edit_config!(config, filecontent, args, false)
+      edit_config!(config, filecontent, args)
     end
   end
 
