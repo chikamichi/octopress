@@ -390,7 +390,7 @@ module Octopress
 
       edit_config('_config.yml', {
         'deploy_branch'  => branch,
-        'deploy_default' => 'pussh'
+        'deploy_default' => 'push'
       })
 
       say "## Deployment configured. You can now deploy to the #{branch} branch by running thor deploy"
