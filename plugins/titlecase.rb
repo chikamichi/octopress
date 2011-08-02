@@ -1,4 +1,8 @@
 class String
+  def squish
+    self.gsub(/^.{#{self[/^\s+/].length}}/, '')
+  end
+
   def titlecase
     small_words = %w(a an and as at but by en for if in of on or the to v v. via vs vs.)
 

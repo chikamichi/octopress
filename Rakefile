@@ -189,13 +189,10 @@ desc "Update configurations to support publishing to root or sub directory"
 task :set_root_dir, :dir do |t, args|
   puts ">>> !! Please provide a directory, eg. rake config_dir[publishing/subdirectory]" unless args.dir
   if args.dir
-    if args.dir == "/"
-      dir = ""
-    else
-      dir = "/" + args.dir.sub(/(\/*)(.+)/, "\\2").sub(/\/$/, '');
-    end
+    dir = dir.match(/\//) ? '' : "/" + dir.sub(/(\/*)(.+)/, "\\2").sub(/\/$/, '')
+
     rakefile = IO.read(__FILE__)
-    rakefile.sub!(/public_dir(\s*)=(\s*)(["'])[\w\-\/]*["']/, "public_dir\\1=\\2\\3public#{dir}\\3")
+    rakefile.sub!(/^(\s*):public_dir(\s*)=>(\s*)(["'])?([^\s"']*)(["'])?/, "\\1:public_dir\\2=>\\3\\4public#{dir}\\6")
     File.open(__FILE__, 'w') do |f|
       f.write rakefile
     end
